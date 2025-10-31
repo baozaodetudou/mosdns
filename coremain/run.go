@@ -120,11 +120,22 @@ func NewServer(sf *serverFlags) (*Mosdns, error) {
 		mlog.L().Info("working directory changed", zap.String("path", sf.dir))
 	}
 
-	cfg, fileUsed, err := loadConfig(sf.c)
-	if err != nil {
-		return nil, fmt.Errorf("fail to load config, %w", err)
-	}
-	mlog.L().Info("main config loaded", zap.String("file", fileUsed))
+    cfg, fileUsed, err := loadConfig(sf.c)
+    if err != nil {
+        return nil, fmt.Errorf("fail to load config, %w", err)
+    }
+    mlog.L().Info("main config loaded", zap.String("file", fileUsed))
+
+    // If user didn't explicitly set working dir, align working dir to the
+    // directory of the loaded config file so that any relative paths inside
+    // config (and sub-configs) resolve relative to config.yaml's directory.
+    if len(sf.dir) == 0 && len(fileUsed) > 0 {
+        cfgDir := filepath.Dir(fileUsed)
+        if err := os.Chdir(cfgDir); err != nil {
+            return nil, fmt.Errorf("failed to change working directory to config dir, %w", err)
+        }
+        mlog.L().Info("working directory changed", zap.String("path", cfgDir))
+    }
 
 	return NewMosdns(cfg, fileUsed)
 }
