@@ -21,16 +21,17 @@ package main
 
 import (
 	"fmt"
+	_ "net/http/pprof"
+
 	"github.com/IrineSistiana/mosdns/v5/coremain"
 	"github.com/IrineSistiana/mosdns/v5/mlog"
 	_ "github.com/IrineSistiana/mosdns/v5/plugin"
 	_ "github.com/IrineSistiana/mosdns/v5/tools"
 	"github.com/spf13/cobra"
-	_ "net/http/pprof"
 )
 
 var (
-	version = "v5-ph-srs"
+	version = "v5.0.1-msm"
 )
 
 func init() {
