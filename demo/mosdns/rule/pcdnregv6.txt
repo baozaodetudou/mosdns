@@ -1,7 +1,7 @@
-# ¸ÉµôV6ÇëÇó ÕâÐ©ÓòÃûÖ»ÓÐv4½á¹û£¬²»ÐèÒªÇëÇóv6
+# 屏蔽 IPv6 请求：以下域名通常仅有 IPv4 解析结果，无需发起 IPv6 查询
 
-# ÌÚÑ¶CDN (smtcdns.net - 32-char hex)
+# CDN (smtcdns.net - 32 位十六进制)
 regexp:^[0-9a-f]{32}\.v\.smtcdns\.net$
 
-# ÌÚÑ¶·þÎñ (ahdohpiechei.com - 9-10 digit number)
+# 服务 (ahdohpiechei.com - 9~10 位数字主机名)
 regexp:^(\d{9,10})\.ahdohpiechei\.com$

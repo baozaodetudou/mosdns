@@ -1,0 +1,19 @@
+# 屏蔽 IPv4 请求：以下域名通常仅有 IPv6 解析结果，无需发起 IPv4 查询
+# PCDN (smtcdns.com & smtcdns.net - 48 位十六进制)
+regexp:^[0-9a-f]{48}\.v\.smtcdns\.com$
+regexp:^[0-9a-f]{48}\.v\.smtcdns\.net$
+
+# P2P (ahdohpiechei.com - 32 位十六进制)
+regexp:^[0-9a-f]{32}\.ahdohpiechei\.com$
+
+# P2P (homeborn.cn - 以 IP 片段作为主机名)
+regexp:^([0-9a-f]{1,4}-){7}[0-9a-f]{1,4}-[0-9a-f]+\.erer\.homeborn\.cn$
+
+# CDN (bsgslb.cn - 长字符串主机名)
+regexp:^[a-z0-9]{50,}\.tt\.x\.bsgslb\.cn$
+
+# CDN (siomxity.net/com - 长字符串主机名)
+regexp:^[a-z0-9]{50,}\.siomxity\.(net|com)$
+
+# CDN (sealaly.net - 长字符串主机名)
+regexp:^[a-z0-9]{50,}\.sealaly\.net$
