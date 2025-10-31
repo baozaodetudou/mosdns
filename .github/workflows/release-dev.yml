@@ -37,10 +37,17 @@ jobs:
           python-version: '3.13'
           check-latest: true
 
+      - name: Read version from code
+        id: ver
+        run: |
+          VER=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' main.go | head -n1)
+          echo "VERSION=$VER" >> $GITHUB_ENV
+
       - name: Build one target
         run: python ./release.py -i ${{ matrix.index }}
         env:
           CGO_ENABLED: '0'
+          VERSION: ${{ env.VERSION }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -55,10 +62,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate tag
-        shell: bash
+      - name: Read version from code
         run: |
-          echo "TAG_NAME=dev-$(date +'%Y%m%d-%H%M')-${GITHUB_SHA::7}" >> $GITHUB_ENV
+          VER=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' main.go | head -n1)
+          echo "TAG_NAME=${VER}-dev" >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
