@@ -1,0 +1,13 @@
+[
+  {
+    "name": "geoip_cn",
+    "type": "geoipcn",
+    "files": "srs/geoip-cn.srs",
+    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geoip/cn.srs",
+    "enabled": true,
+    "auto_update": false,
+    "update_interval_hours": 24,
+    "rule_count": 0,
+    "last_updated": "2025-07-24T11:45:36.245938591+08:00"
+  }
+]
