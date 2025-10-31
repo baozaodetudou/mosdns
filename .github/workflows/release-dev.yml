@@ -47,7 +47,7 @@ jobs:
         run: python ./release.py -i ${{ matrix.index }}
         env:
           CGO_ENABLED: '0'
-          VERSION: ${{ env.VERSION }}
+          VERSION: ${{ env.VERSION }}-dev
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
