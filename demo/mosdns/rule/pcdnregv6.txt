@@ -1,0 +1,7 @@
+# ¸ÉµôV6ÇëÇó ÕâÐ©ÓòÃûÖ»ÓÐv4½á¹û£¬²»ÐèÒªÇëÇóv6
+
+# ÌÚÑ¶CDN (smtcdns.net - 32-char hex)
+regexp:^[0-9a-f]{32}\.v\.smtcdns\.net$
+
+# ÌÚÑ¶·þÎñ (ahdohpiechei.com - 9-10 digit number)
+regexp:^(\d{9,10})\.ahdohpiechei\.com$
