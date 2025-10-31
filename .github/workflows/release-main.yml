@@ -28,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.25.x'
           check-latest: true
 
       - name: Set up Python
@@ -40,7 +40,7 @@ jobs:
       - name: Read version from code
         id: ver
         run: |
-          VER=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' main.go | head -n1)
+          VER=$(sed -n 's/^\s*version\s*=\s*"\(.*\)"/\1/p' main.go | head -n1)
           echo "VERSION=$VER" >> $GITHUB_ENV
 
       - name: Build one target
@@ -64,8 +64,13 @@ jobs:
 
       - name: Read version from code
         run: |
-          VER=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' main.go | head -n1)
+          VER=$(sed -n 's/^\s*version\s*=\s*"\(.*\)"/\1/p' main.go | head -n1)
           echo "TAG_NAME=${VER}" >> $GITHUB_ENV
+
+      - name: Read Go version from go.mod
+        run: |
+          GOV=$(awk '/^go / {print $2}' go.mod)
+          echo "GO_VERSION=$GOV" >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -81,6 +86,8 @@ jobs:
           files: './artifacts/mosdns*.zip'
           prerelease: false
           generate_release_notes: true
+          append_body: true
+          body: "Built with Go ${{ env.GO_VERSION }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
