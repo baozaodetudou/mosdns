@@ -52,11 +52,12 @@ def go_build():
     if args.i:
         envs = [envs[args.i]]
 
-    VERSION = 'dev/unknown'
-    try:
-        VERSION = subprocess.check_output('git describe --tags --long --always', shell=True).decode().rstrip()
-    except subprocess.CalledProcessError as e:
-        logger.error(f'get git tag failed: {e.args}')
+    VERSION = os.getenv('VERSION') or 'dev/unknown'
+    if VERSION == 'dev/unknown':
+        try:
+            VERSION = subprocess.check_output('git describe --tags --long --always', shell=True).decode().rstrip()
+        except subprocess.CalledProcessError as e:
+            logger.error(f'get git tag failed: {e.args}')
 
     try:
         subprocess.check_call('go run ../ config gen config.yaml', shell=True, env=os.environ)
