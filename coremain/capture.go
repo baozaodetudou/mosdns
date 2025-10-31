@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// MODIFIED: Exported LogMarkKey to be accessible from other packages.
-const LogMarkKey = 0xFEEDBEEF // ADDED: A globally accessible key for marking contexts.
+// LogMarkKey 用于在上下文中打标记（布尔开关/跟踪等用途）
+const LogMarkKey = 0xFEEDBEEF
 
 // InMemoryLogCollector is a thread-safe in-memory log collector.
 type InMemoryLogCollector struct {
@@ -17,6 +17,8 @@ type InMemoryLogCollector struct {
 	capturing bool
 	logs      []map[string]interface{}
 	stopTimer *time.Timer
+	origLevel zapcore.Level
+	hasOrig   bool
 }
 
 // GlobalLogCollector is a singleton instance for log capturing.
@@ -30,7 +32,12 @@ func (c *InMemoryLogCollector) StartCapture(duration time.Duration, logLevel zap
 	defer c.mu.Unlock()
 
 	if c.capturing {
-		c.stopTimer.Stop() // Stop previous timer if a new capture starts
+		if c.stopTimer != nil {
+			c.stopTimer.Stop() // Stop previous timer if a new capture starts
+		}
+	} else {
+		c.origLevel = logLevel.Level()
+		c.hasOrig = true
 	}
 
 	// Reset log buffer for the new capture session.
@@ -52,10 +59,16 @@ func (c *InMemoryLogCollector) StopCapture(logLevel zap.AtomicLevel) {
 		return
 	}
 
-	logLevel.SetLevel(zap.InfoLevel) // Restore to default INFO level
+	if c.hasOrig {
+		logLevel.SetLevel(c.origLevel) // Restore to original level
+		c.hasOrig = false
+	} else {
+		logLevel.SetLevel(zap.InfoLevel) // Fallback to INFO
+	}
 	c.capturing = false
 	if c.stopTimer != nil {
 		c.stopTimer.Stop()
+		c.stopTimer = nil
 	}
 }
 
@@ -67,11 +80,11 @@ func (c *InMemoryLogCollector) AddLog(entry zapcore.Entry, fields []zapcore.Fiel
 	if !c.capturing {
 		return
 	}
-    
-    // Only capture debug level logs into memory.
-    if entry.Level != zap.DebugLevel {
-        return
-    }
+  
+	// Only capture debug level logs into memory.
+	if entry.Level != zap.DebugLevel {
+		return
+	}
 
 	// Convert fields to a map
 	enc := zapcore.NewMapObjectEncoder()
@@ -86,7 +99,16 @@ func (c *InMemoryLogCollector) AddLog(entry zapcore.Entry, fields []zapcore.Fiel
 	logMap["msg"] = entry.Message
 	logMap["logger_name"] = entry.LoggerName
 
-	c.logs = append(c.logs, logMap)
+    // 限制最大容量：达到 cap 时丢弃最旧，保持 O(n) 但 n 较小（默认 2048）。
+    if len(c.logs) < cap(c.logs) {
+        c.logs = append(c.logs, logMap)
+    } else if cap(c.logs) > 0 {
+        // 左移一位，覆盖最旧元素。
+        copy(c.logs[0:], c.logs[1:])
+        c.logs[len(c.logs)-1] = logMap
+    } else {
+        c.logs = append(c.logs, logMap)
+    }
 }
 
 // GetLogs returns all captured logs and clears the in-memory buffer.

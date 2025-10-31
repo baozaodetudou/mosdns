@@ -13,7 +13,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// --- REWRITTEN: String interning with a fixed-size, concurrent-safe LRU cache ---
+// 字符串驻留：使用定长、并发安全的 LRU 缓存降低重复字符串分配
 const lruCacheSize = 16384 // Define a reasonable size for the string cache
 
 type lruEntry struct {
@@ -82,12 +82,14 @@ func internString(s string) string {
 	return s
 }
 
+// 包装上下文：携带处理耗时用于审计统计
 // --- ADDED: A wrapper struct to pass duration along with the context ---
 type auditContext struct {
 	Ctx                *query_context.Context
 	ProcessingDuration time.Duration
 }
 
+// 详细答案信息（含 TTL）
 // ADDED: A new struct to hold detailed answer info, including TTL.
 type AnswerDetail struct {
 	Type string `json:"type"`
@@ -95,6 +97,7 @@ type AnswerDetail struct {
 	Data string `json:"data"`
 }
 
+// 审计日志结构，包含查询/响应要点
 // MODIFIED: AuditLog struct is enhanced with more details.
 type AuditLog struct {
 	ClientIP      string         `json:"client_ip"`
@@ -110,7 +113,7 @@ type AuditLog struct {
 	DomainSet     string         `json:"domain_set,omitempty"`
 }
 
-// ADDED: A struct to group response flags for clarity in JSON.
+// 响应标志位封装，便于 JSON 输出
 type ResponseFlags struct {
 	AA bool `json:"aa"`
 	TC bool `json:"tc"`
@@ -124,7 +127,7 @@ const (
 	auditChannelCapacity   = 1024
 )
 
-// --- MODIFIED: The heap now stores values (AuditLog) instead of pointers (*AuditLog) ---
+// 最慢查询小顶堆，按耗时排序，存值类型（非指针）
 type slowestQueryHeap []AuditLog
 
 func (h slowestQueryHeap) Len() int           { return len(h) }
@@ -197,7 +200,7 @@ func (c *AuditCollector) worker() {
 	}
 }
 
-// --- MODIFIED: processContext now accepts the wrapper struct ---
+// 处理单条审计日志（入堆与聚合）
 func (c *AuditCollector) processContext(wrappedCtx *auditContext) {
 	// STEP 1: All preparation work is done OUTSIDE the main lock.
 	qCtx := wrappedCtx.Ctx
@@ -220,6 +223,7 @@ func (c *AuditCollector) processContext(wrappedCtx *auditContext) {
 		}
 	}
 
+  // 若未命中任何域名集合，标记为 "unmatched_rule"
 	// --- ADDED START ---
 	// 1.     DomainSet  侄 为  ,         为 "unmatched_rule"
 	if log.DomainSet == "" {
@@ -292,6 +296,7 @@ func (c *AuditCollector) processContext(wrappedCtx *auditContext) {
 			delete(c.clientCounts, oldLog.ClientIP)
 		}
 
+    // 移除被覆盖日志对应的 DomainSet 计数
 		// --- MODIFIED START ---
 		// 2.  瞥  if oldLog.DomainSet != ""         为     DomainSet   远  为  
 		c.domainSetCounts[oldLog.DomainSet]--
@@ -317,6 +322,7 @@ func (c *AuditCollector) processContext(wrappedCtx *auditContext) {
 	c.domainCounts[log.QueryName]++
 	c.clientCounts[log.ClientIP]++
 
+  // 增加当前日志的 DomainSet 计数
 	// --- MODIFIED START ---
 	// 3.  瞥  if log.DomainSet != ""         为     DomainSet   远  为  
 	c.domainSetCounts[log.DomainSet]++

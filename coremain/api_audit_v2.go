@@ -14,8 +14,8 @@ import (
 
 // V2StatsResponse for API: /api/v2/audit/stats
 type V2StatsResponse struct {
-	TotalQueries      uint64  `json:"total_queries"` // MODIFIED: Changed from int to uint64
-	AverageDurationMs float64 `json:"average_duration_ms"`
+    TotalQueries      uint64  `json:"total_queries"`
+    AverageDurationMs float64 `json:"average_duration_ms"`
 }
 
 // V2RankItem for ranking APIs
