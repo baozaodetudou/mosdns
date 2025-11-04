@@ -447,7 +447,7 @@ func (m *Mosdns) loadPluginsFromCfg(cfg *Config, includeDepth int, baseDir strin
 			return fmt.Errorf("failed to read config from %s, %w", includePath, err)
 		}
 		m.logger.Info("load config", zap.String("file", path))
-		if err := m.loadPluginsFromCfg(subCfg, includeDepth); err != nil {
+		if err := m.loadPluginsFromCfg(subCfg, includeDepth, subCfg.baseDir); err != nil {
 			return fmt.Errorf("failed to load config from %s, %w", includePath, err)
 		}
 	}
