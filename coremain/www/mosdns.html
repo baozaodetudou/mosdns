@@ -4,11 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MosDNS 监控面板</title>
-    <link rel="stylesheet" href="assets/css/fonts-graphic.css">
     <link rel="stylesheet" href="assets/css/fontawesome.css">
-    <script src="assets/js/chart.umd.min.js"></script>
-    <script src="assets/js/chartjs-plugin-datalabels.min.js"></script>
-    <script src="assets/js/mermaid.min.js"></script>
     <style>
         :root {
             --bg-color: #f7f9fd; --text-color: #2c3e50; --card-bg: #ffffff;
@@ -34,12 +30,8 @@
         }
         
         /* [4K FIX] 保持基准字体大小为 16px，使用 JS 进行缩放 */
-        html { 
-            font-size: 16px; scroll-behavior: smooth; box-sizing: border-box; 
-        }
-        *, *::before, *::after {
-            box-sizing: inherit;
-        }
+        html { font-size: 16px; scroll-behavior: smooth; box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: inherit; }
         *:focus-visible {
             outline: 2px solid var(--focus-ring-color);
             outline-offset: 2px;
@@ -686,6 +678,36 @@
         let coreMode = 'A';
         let isMgmtTabInitialized = { config: false, list: false };
 
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = resolve;
+            s.onerror = () => reject(new Error(`failed to load ${src}`));
+            document.head.appendChild(s);
+        });
+
+        let chartsReady = false;
+        async function ensureChartsLoaded() {
+            if (chartsReady) return;
+            await loadScript('assets/js/chart.umd.min.js');
+            await loadScript('assets/js/chartjs-plugin-datalabels.min.js');
+            if (typeof Chart === 'undefined' || typeof ChartDataLabels === 'undefined') {
+                throw new Error('Chart libraries failed to load');
+            }
+            Chart.register(ChartDataLabels);
+            Chart.defaults.plugins.legend.display = false;
+            Chart.defaults.plugins.datalabels.font = { weight: 'bold', size: 11 };
+            Chart.defaults.cutout = '70%';
+            Chart.defaults.responsive = true;
+            Chart.defaults.maintainAspectRatio = false;
+            Chart.defaults.plugins.datalabels.formatter = (v, c) => {
+                const total = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                return total > 0 && v / total > 0.05 ? `${(v / total * 100).toFixed(0)}%` : '';
+            };
+            chartsReady = true;
+        }
+
         let currentModalData = { type: null, rawEntries: [], filteredEntries: [], totalCount: 0, loadTime: 0 };
         let dataModalSearchInput = null;
         
@@ -719,9 +741,6 @@
         const hostsProfiles = [];
         const ruleListPaths = ['top_domains/flush', 'my_fakeiplist/flush', 'my_nodenov4list/flush', 'my_nodenov6list/flush', 'my_notinlist/flush', 'my_nov4list/flush', 'my_nov6list/flush', 'my_realiplist/flush'];
 
-        Chart.register(ChartDataLabels); Chart.defaults.plugins.legend.display = false; Chart.defaults.plugins.datalabels.font = { weight: 'bold', size: 11 }; Chart.defaults.cutout = '70%'; Chart.defaults.responsive = true; Chart.defaults.maintainAspectRatio = false;
-        Chart.defaults.plugins.datalabels.formatter = (v, c) => { const s = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 && v / s > 0.05 ? `${(v / s * 100).toFixed(0)}%` : ''; };
-        
         function createElement(tag, className, innerText = '', id = '') { const el = D.createElement(tag); if (className) el.className = className; if (innerText) el.innerText = innerText; if (id) el.id = id; return el; }
         function formatNumber(num) { if (typeof num !== 'number' && isNaN(num = parseFloat(num))) { return num; } return num.toLocaleString('en-US'); }
 
@@ -876,7 +895,26 @@
         }
         
         function createCacheCard(tag, titleHTML) { const c = createElement('div', 'card'); c.dataset.tag = tag; c.innerHTML = `<h2><i class="fas fa-server"></i><span class="title-text">${titleHTML}</span><span class="status-dot" id="status-dot-${tag}"></span></h2><div class="card-title-gradient-bar"></div><div class="metrics-container" id="metrics-${tag}"></div><div class="charts" id="charts-${tag}"><div class="chart-container"><canvas id="chart-hit-${tag}"></canvas></div><div class="chart-container"><canvas id="chart-lazy-${tag}"></canvas></div></div>`; return c; }
-        function createOrUpdatePieChart(id, title, hit, total) { const ctx = getById(id); if (!ctx) return; const c = themeMap[currentTheme]?.chartColors || themeMap.light.chartColors; const d = { labels: ['命中', '未命中'], datasets: [{ data: [hit, Math.max(0, total - hit)], backgroundColor: [c.hit, c.miss], borderWidth: 0 }] }; const o = { plugins: { title: { display: true, text: title, color: c.text, font: { size: 12, weight: '500' } }, datalabels: { color: c.text, formatter: (v, ctx) => { const s = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 && v / s > 0.05 ? `${(v / s * 100).toFixed(0)}%` : ''; } } } }; if (chartInstances[id]) { chartInstances[id].data = d; chartInstances[id].options = o; chartInstances[id].update('none'); } else { chartInstances[id] = new Chart(ctx, { type: 'doughnut', data: d, options: o }); } }
+        async function createOrUpdatePieChart(id, title, hit, total) {
+            const ctx = getById(id);
+            if (!ctx) return;
+            await ensureChartsLoaded();
+            const c = themeMap[currentTheme]?.chartColors || themeMap.light.chartColors;
+            const d = { labels: ['命中', '未命中'], datasets: [{ data: [hit, Math.max(0, total - hit)], backgroundColor: [c.hit, c.miss], borderWidth: 0 }] };
+            const o = {
+                plugins: {
+                    title: { display: true, text: title, color: c.text, font: { size: 12, weight: '500' } },
+                    datalabels: { color: c.text, formatter: (v, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return total > 0 && v / total > 0.05 ? `${(v / total * 100).toFixed(0)}%` : ''; } }
+                }
+            };
+            if (chartInstances[id]) {
+                chartInstances[id].data = d;
+                chartInstances[id].options = o;
+                chartInstances[id].update('none');
+            } else {
+                chartInstances[id] = new Chart(ctx, { type: 'doughnut', data: d, options: o });
+            }
+        }
         
         function updateMetrics(containerId, metricsData) {
             const container = getById(containerId);
@@ -931,7 +969,10 @@
                     
                     getById(`status-dot-${key}`).classList.toggle('status-green', cardData.query_total > 0); getById(`status-dot-${key}`).classList.toggle('status-yellow', cardData.query_total === 0);
                     getById(`charts-${key}`).style.display = cardData.query_total > 0 ? 'flex' : 'none';
-                    if ((forceRebuild || updateCharts) && cardData.query_total > 0) { createOrUpdatePieChart(`chart-hit-${key}`, '命中', cardData.hit_total, cardData.query_total); createOrUpdatePieChart(`chart-lazy-${key}`, '过期命中', cardData.lazy_hit_total, cardData.query_total); }
+                    if ((forceRebuild || updateCharts) && cardData.query_total > 0) {
+                        await createOrUpdatePieChart(`chart-hit-${key}`, '命中', cardData.hit_total, cardData.query_total);
+                        await createOrUpdatePieChart(`chart-lazy-${key}`, '过期命中', cardData.lazy_hit_total, cardData.query_total);
+                    }
                 }
             });
             updateMetrics('metrics-system', [{ label: '启动时间', value: data.system.start_time }, { label: 'CPU 时间', value: data.system.cpu_time }, { label: '常驻内存 (RSS)', value: data.system.resident_memory }, { label: '待用堆内存 (Idle)', value: data.system.heap_idle_memory }, { label: 'Go 版本', value: data.system.go_version, accent: true }, { label: '线程数', numericValue: data.system.threads }, { label: '打开文件描述符', numericValue: data.system.open_fds }, ]);
