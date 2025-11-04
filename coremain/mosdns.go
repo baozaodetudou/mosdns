@@ -43,7 +43,7 @@ import (
 
 // <<< MODIFIED: Adjusted the embed list for rlog assets
 //
-//go:embed www/mosdns.html www/mosdnsp.html www/log.html www/log_plain.html www/rlog.html www/adguard.html www/rlog.css www/rlog.js
+//go:embed www/mosdns.html www/log.html www/rlog.css www/rlog.js
 var content embed.FS
 
 type Mosdns struct {
@@ -263,18 +263,8 @@ func (m *Mosdns) initHttpMux() {
 	})
 	m.httpMux.Method(http.MethodGet, "/metrics", wrappedMetricsHandler)
 
-	// [新增] 根路由 ("/") 的 handler，指向 mosdnsp.html
-	rootHandler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := content.ReadFile("www/mosdnsp.html") // 读取新文件
-		if err != nil {
-			m.logger.Error("Error reading embedded file", zap.String("file", "www/mosdnsp.html"), zap.Error(err))
-			http.Error(w, "Error reading the embedded file", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing response", zap.Error(err))
-		}
+	rootRedirectHandler := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/graphic", http.StatusFound)
 	}
 
 	// [新增] graphic 路由 ("/graphic") 的 handler，保持指向 mosdns.html
@@ -291,7 +281,6 @@ func (m *Mosdns) initHttpMux() {
 		}
 	}
 
-	// [新增] log 路由 ("/log") 的 handler, 指向 /www/log.html
 	logHandler := func(w http.ResponseWriter, r *http.Request) {
 		data, err := content.ReadFile("www/log.html") // 读取 /www/log.html
 		if err != nil {
@@ -305,44 +294,8 @@ func (m *Mosdns) initHttpMux() {
 		}
 	}
 
-	// [新添加] plog 路由 ("/plog") 的 handler, 指向 /www/log_plain.html
-	plainLogHandler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := content.ReadFile("www/log_plain.html") // 读取 /www/log_plain.html
-		if err != nil {
-			m.logger.Error("Error reading embedded file", zap.String("file", "www/log_plain.html"), zap.Error(err))
-			http.Error(w, "Error reading the embedded file", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing response", zap.Error(err))
-		}
-	}
-
-	rlogHandler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := content.ReadFile("www/rlog.html") // 读取 /www/rlog.html
-		if err != nil {
-			m.logger.Error("Error reading embedded file", zap.String("file", "www/rlog.html"), zap.Error(err))
-			http.Error(w, "Error reading the embedded file", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing response", zap.Error(err))
-		}
-	}
-
-	adguardHandler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := content.ReadFile("www/adguard.html") // 读取 /www/adguard.html
-		if err != nil {
-			m.logger.Error("Error reading embedded file", zap.String("file", "www/adguard.html"), zap.Error(err))
-			http.Error(w, "Error reading the embedded file", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing response", zap.Error(err))
-		}
+	redirectToLog := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/log", http.StatusFound)
 	}
 
 	// 静态资源处理
@@ -378,13 +331,11 @@ func (m *Mosdns) initHttpMux() {
 		}
 	}
 
-	// [修改] 为每个路由注册对应的 handler
-	m.httpMux.Get("/", rootHandler)
+	m.httpMux.Get("/", rootRedirectHandler)
 	m.httpMux.Get("/graphic", graphicHandler)
 	m.httpMux.Get("/log", logHandler)
-	m.httpMux.Get("/plog", plainLogHandler)
-	m.httpMux.Get("/rlog", rlogHandler) // This remains the same, still serves rlog.html
-	m.httpMux.Get("/adguard", adguardHandler)
+	m.httpMux.Get("/plog", redirectToLog)
+	m.httpMux.Get("/rlog", redirectToLog)
 
 	// <<< NEW: Register routes for the separated CSS and JS files
 	m.httpMux.Get("/rlog.css", staticAssetHandler)
