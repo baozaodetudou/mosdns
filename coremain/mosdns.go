@@ -43,7 +43,7 @@ import (
 
 // <<< MODIFIED: Adjusted the embed list for rlog assets
 //
-//go:embed www/mosdns.html www/log.html www/rlog.css www/rlog.js
+//go:embed www/mosdns.html www/log.html www/rlog.css www/rlog.js www/assets/css/* www/assets/js/* www/assets/fonts/* www/assets/webfonts/*
 var content embed.FS
 
 type Mosdns struct {
