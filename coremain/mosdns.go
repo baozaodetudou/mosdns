@@ -298,48 +298,53 @@ func (m *Mosdns) initHttpMux() {
 		http.Redirect(w, r, "/log", http.StatusFound)
 	}
 
-	// 静态资源处理
-	staticAssetHandler := func(w http.ResponseWriter, r *http.Request) {
-		requestPath := strings.TrimPrefix(r.URL.Path, "/")
-		if requestPath == "" {
-			http.NotFound(w, r)
-			return
-		}
-
-		cleaned := path.Clean(requestPath)
-		if cleaned == "." || strings.HasPrefix(cleaned, "..") {
-			http.NotFound(w, r)
-			return
-		}
-
-		filePath := path.Join("www", cleaned)
-		data, err := content.ReadFile(filePath)
-		if err != nil {
-			m.logger.Error("Error reading embedded static file", zap.String("path", filePath), zap.Error(err))
-			http.NotFound(w, r)
-			return
-		}
-
-		if ext := path.Ext(filePath); ext == ".css" {
-			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		} else if ext == ".js" {
-			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		}
-
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing static asset response", zap.Error(err))
-		}
-	}
-
 	m.httpMux.Get("/", rootRedirectHandler)
 	m.httpMux.Get("/graphic", graphicHandler)
 	m.httpMux.Get("/log", logHandler)
 	m.httpMux.Get("/plog", redirectToLog)
 	m.httpMux.Get("/rlog", redirectToLog)
+	serveStatic := func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			return false
+		}
 
-	// <<< NEW: Register routes for the separated CSS and JS files
-	m.httpMux.Get("/rlog.css", staticAssetHandler)
-	m.httpMux.Get("/rlog.js", staticAssetHandler)
+		requestPath := strings.TrimPrefix(r.URL.Path, "/")
+		if requestPath == "" {
+			return false
+		}
+
+		cleaned := path.Clean(requestPath)
+		if cleaned == "." || strings.HasPrefix(cleaned, "..") {
+			return false
+		}
+
+		filePath := path.Join("www", cleaned)
+		data, err := content.ReadFile(filePath)
+		if err != nil {
+			return false
+		}
+
+		switch ext := path.Ext(filePath); ext {
+		case ".css":
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		case ".js":
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		case ".html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		default:
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
+
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return true
+		}
+
+		if _, err := w.Write(data); err != nil {
+			m.logger.Error("Error writing static asset response", zap.Error(err))
+		}
+		return true
+	}
 
 	// Register pprof.
 	m.httpMux.Route("/debug/pprof", func(r chi.Router) {
@@ -352,6 +357,9 @@ func (m *Mosdns) initHttpMux() {
 
 	// A helper page for invalid request.
 	invalidApiReqHelper := func(w http.ResponseWriter, req *http.Request) {
+		if serveStatic(w, req) {
+			return
+		}
 		b := new(bytes.Buffer)
 		_, _ = fmt.Fprintf(b, "Invalid request %s %s\n\n", req.Method, req.RequestURI)
 		b.WriteString("Available api urls:\n")
