@@ -939,7 +939,7 @@
             if (!data) return;
             if (forceRebuild) { getById('main-content').innerHTML = ''; Object.values(chartInstances).forEach(c => c.destroy()); chartInstances = {}; }
             
-            cacheOrder.forEach(key => {
+            for (const key of cacheOrder) {
                 let card = D.querySelector(`.card[data-tag="${key}"]`);
                 const config = cacheConfig[key];
                 let title = coreMode === 'B' ? (config.titleModeB || config.title) : config.title;
@@ -974,7 +974,7 @@
                         await createOrUpdatePieChart(`chart-lazy-${key}`, '过期命中', cardData.lazy_hit_total, cardData.query_total);
                     }
                 }
-            });
+            }
             updateMetrics('metrics-system', [{ label: '启动时间', value: data.system.start_time }, { label: 'CPU 时间', value: data.system.cpu_time }, { label: '常驻内存 (RSS)', value: data.system.resident_memory }, { label: '待用堆内存 (Idle)', value: data.system.heap_idle_memory }, { label: 'Go 版本', value: data.system.go_version, accent: true }, { label: '线程数', numericValue: data.system.threads }, { label: '打开文件描述符', numericValue: data.system.open_fds }, ]);
             const lastUpdatedEl = getById('last_updated');
             if(lastUpdatedEl) lastUpdatedEl.innerHTML = `<i class="fas fa-clock"></i> 最后更新: ${new Date().toLocaleTimeString()}`;
@@ -1546,11 +1546,7 @@
             getById('restart-mosdns-btn').onclick = async () => { if (confirm('【危险操作】此操作将首先保存所有分流规则，然后重启 MosDNS。确定要继续吗?')) { const saveSuccess = await saveAllRulesAndNotify(); if (saveSuccess) { showToast('规则已保存，正在发送重启命令...', 'success'); try { const response = await fetch('/plugins/my_fakeiplist/restartall'); if (!response.ok) { const errorText = await response.text(); throw new Error(errorText || `重启命令请求失败，状态码: ${response.status}`); } showToast('MosDNS 正在重启，页面即将刷新...'); setTimeout(() => location.reload(), 2000); } catch (e) { showToast('重启命令发送失败', 'error'); showErrorModal(e.message); } } else { showToast('由于规则保存失败，重启操作已取消。', 'error'); } } };
             
             // === MODIFIED START ===
-            getById('dns-log-page-btn').onclick = () => { 
-                // 直接使用相对于根的路径，并附加哈希
-                const url = '/log#overview';
-                window.open(url, '_blank'); 
-            };
+            getById('dns-log-page-btn').onclick = () => { window.location.href = '/log#overview'; };
             // === MODIFIED END ===
             
             const showEndpoints = { '请求排行': 'top_domains','fakeip 域名': 'my_fakeiplist', 'realip 域名': 'my_realiplist', '无 V4 域名': 'my_nov4list', '无 V6 域名': 'my_nov6list', '全部缓存（兼容）': 'cache_all', '全部缓存（安全）': 'cache_all_noleak','国内缓存': 'cache_cn', '国外缓存（兼容）': 'cache_google', '国外缓存（安全）': 'cache_google_node','节点缓存': 'cache_node' };
