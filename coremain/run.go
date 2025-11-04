@@ -167,5 +167,20 @@ func loadConfig(filePath string) (*Config, string, error) {
 	if err := v.Unmarshal(cfg, decoderOpt); err != nil {
 		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-	return cfg, v.ConfigFileUsed(), nil
+	fileUsed := v.ConfigFileUsed()
+	cfg.baseDir = resolveBaseDir(fileUsed)
+	return cfg, fileUsed, nil
+}
+
+func resolveBaseDir(fileUsed string) string {
+	if len(fileUsed) > 0 {
+		if abs, err := filepath.Abs(fileUsed); err == nil {
+			return filepath.Dir(abs)
+		}
+		return filepath.Dir(fileUsed)
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
 }

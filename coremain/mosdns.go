@@ -41,7 +41,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// 嵌入 www 静态资源（含 rlog 相关文件）
+// <<< MODIFIED: Adjusted the embed list for rlog assets
 //
 //go:embed www/mosdns.html www/mosdnsp.html www/log.html www/log_plain.html www/rlog.html www/adguard.html www/rlog.css www/rlog.js
 var content embed.FS
@@ -437,23 +437,18 @@ func (m *Mosdns) loadPluginsFromCfg(cfg *Config, includeDepth int, baseDir strin
 	includeDepth++
 
 	// Follow include first.
-	for _, s := range cfg.Include {
-		includePath := s
-		if len(includePath) > 0 && !filepath.IsAbs(includePath) && len(baseDir) > 0 {
-			includePath = filepath.Join(baseDir, includePath)
+	for _, includePath := range cfg.Include {
+		resolvedPath := includePath
+		if len(cfg.baseDir) > 0 && !filepath.IsAbs(includePath) {
+			resolvedPath = filepath.Join(cfg.baseDir, includePath)
 		}
-
-		subCfg, pathUsed, err := loadConfig(includePath)
+		subCfg, path, err := loadConfig(resolvedPath)
 		if err != nil {
 			return fmt.Errorf("failed to read config from %s, %w", includePath, err)
 		}
-		nextBase := baseDir
-		if len(pathUsed) > 0 {
-			nextBase = filepath.Dir(pathUsed)
-		}
-		m.logger.Info("load config", zap.String("file", pathUsed))
-		if err := m.loadPluginsFromCfg(subCfg, includeDepth, nextBase); err != nil {
-			return fmt.Errorf("failed to load config from %s, %w", pathUsed, err)
+		m.logger.Info("load config", zap.String("file", path))
+		if err := m.loadPluginsFromCfg(subCfg, includeDepth); err != nil {
+			return fmt.Errorf("failed to load config from %s, %w", includePath, err)
 		}
 	}
 
