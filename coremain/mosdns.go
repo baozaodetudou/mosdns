@@ -41,9 +41,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// <<< MODIFIED: Adjusted the embed list for rlog assets
-//
-//go:embed www/mosdns.html www/log.html www/rlog.css www/rlog.js www/assets/css/* www/assets/js/* www/assets/webfonts/*
+//go:embed www/*
 var content embed.FS
 
 type Mosdns struct {
@@ -89,6 +87,8 @@ func NewMosdns(cfg *Config, configPath string) (*Mosdns, error) {
 	RegisterCaptureAPI(m.httpMux) // For process logs
 	RegisterAuditAPI(m.httpMux)   // For audit logs v1
 	RegisterAuditAPIV2(m.httpMux) // For audit logs v2
+    RegisterUpdateAPI(m.httpMux)  // For binary updates
+    RegisterSystemAPI(m.httpMux)  // For self-restart
 
 	// Start http api server
 	if httpAddr := cfg.API.HTTP; len(httpAddr) > 0 {
@@ -294,34 +294,35 @@ func (m *Mosdns) initHttpMux() {
 		}
 	}
 
+	plainLogHandler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := content.ReadFile("www/log_plain.html")
+		if err != nil {
+			m.logger.Error("Error reading embedded file", zap.String("file", "www/log_plain.html"), zap.Error(err))
+			http.Error(w, "Error reading the embedded file", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, err := w.Write(data); err != nil {
+			m.logger.Error("Error writing response", zap.Error(err))
+		}
+	}
+
 	redirectToLog := func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/log", http.StatusFound)
 	}
 
-	m.httpMux.Get("/", rootRedirectHandler)
-	m.httpMux.Get("/graphic", graphicHandler)
-	m.httpMux.Get("/log", logHandler)
-	m.httpMux.Get("/plog", redirectToLog)
-	m.httpMux.Get("/rlog", redirectToLog)
-	serveStatic := func(w http.ResponseWriter, r *http.Request) bool {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			return false
+	staticAssetHandler := func(w http.ResponseWriter, r *http.Request) {
+		relativePath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+		if !strings.HasPrefix(relativePath, "assets/") {
+			http.NotFound(w, r)
+			return
 		}
-
-		requestPath := strings.TrimPrefix(r.URL.Path, "/")
-		if requestPath == "" {
-			return false
-		}
-
-		cleaned := path.Clean(requestPath)
-		if cleaned == "." || strings.HasPrefix(cleaned, "..") {
-			return false
-		}
-
-		filePath := path.Join("www", cleaned)
+		filePath := path.Join("www", relativePath)
 		data, err := content.ReadFile(filePath)
 		if err != nil {
-			return false
+			m.logger.Error("Error reading embedded static file", zap.String("path", filePath), zap.Error(err))
+			http.NotFound(w, r)
+			return
 		}
 
 		switch ext := path.Ext(filePath); ext {
@@ -329,15 +330,12 @@ func (m *Mosdns) initHttpMux() {
 			w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		case ".js":
 			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		case ".html":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		default:
-			w.Header().Set("Content-Type", "application/octet-stream")
-		}
-
-		if r.Method == http.MethodHead {
-			w.WriteHeader(http.StatusOK)
-			return true
+		case ".woff2":
+			w.Header().Set("Content-Type", "font/woff2")
+		case ".woff":
+			w.Header().Set("Content-Type", "font/woff")
+		case ".ttf":
+			w.Header().Set("Content-Type", "font/ttf")
 		}
 
 		if _, err := w.Write(data); err != nil {
@@ -345,6 +343,14 @@ func (m *Mosdns) initHttpMux() {
 		}
 		return true
 	}
+
+	// [修改] 为每个路由注册对应的 handler
+	m.httpMux.Get("/", rootHandler)
+	m.httpMux.Get("/graphic", graphicHandler)
+	m.httpMux.Get("/log", logHandler)
+	m.httpMux.Get("/plog", plainLogHandler)
+	m.httpMux.Get("/rlog", redirectToLog)
+	m.httpMux.Get("/assets/*", staticAssetHandler)
 
 	// Register pprof.
 	m.httpMux.Route("/debug/pprof", func(r chi.Router) {

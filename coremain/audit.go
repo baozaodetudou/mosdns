@@ -3,14 +3,19 @@ package coremain
 import (
 	"container/heap"
 	"container/list"
+	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/IrineSistiana/mosdns/v5/mlog"
 	"github.com/IrineSistiana/mosdns/v5/pkg/query_context"
 	"github.com/miekg/dns"
+	"go.uber.org/zap"
 )
 
 // 字符串驻留：使用定长、并发安全的 LRU 缓存降低重复字符串分配
@@ -125,7 +130,13 @@ const (
 	maxAuditCapacity       = 400000
 	slowestQueriesCapacity = 300
 	auditChannelCapacity   = 1024
+	auditSettingsFilename  = "audit_settings.json" // <<< ADDED
 )
+
+// <<< ADDED: Struct for persistent settings
+type AuditSettings struct {
+	Capacity int `json:"capacity"`
+}
 
 // 最慢查询小顶堆，按耗时排序，存值类型（非指针）
 type slowestQueryHeap []AuditLog
@@ -162,7 +173,41 @@ type AuditCollector struct {
 	workerDone         chan struct{}
 }
 
+// <<< MODIFIED: Global variable is initialized with the default value first.
 var GlobalAuditCollector = NewAuditCollector(defaultAuditCapacity)
+
+// <<< NEW: An exported function to re-initialize the collector with a loaded capacity.
+func InitializeAuditCollector(configBaseDir string) {
+	initialCapacity := defaultAuditCapacity
+	settingsPath := filepath.Join(configBaseDir, auditSettingsFilename)
+	settings := &AuditSettings{}
+	data, err := os.ReadFile(settingsPath)
+
+	if err == nil {
+		if json.Unmarshal(data, settings) == nil {
+			initialCapacity = settings.Capacity
+			// Apply validation
+			if initialCapacity < 0 {
+				initialCapacity = 0
+			}
+			if initialCapacity > maxAuditCapacity {
+				initialCapacity = maxAuditCapacity
+			}
+			mlog.S().Infof("Loaded audit log capacity from settings file: %s, capacity: %d", settingsPath, initialCapacity)
+		} else {
+			mlog.S().Warnf("Failed to parse audit settings file '%s', using default. Error: %v", settingsPath, err)
+		}
+	} else if !os.IsNotExist(err) {
+		// Log error only if it's not a "file not found" error
+		mlog.S().Warnf("Failed to read audit settings file '%s', using default. Error: %v", settingsPath, err)
+	}
+
+	// Re-initialize the global collector if the capacity from file is different from the initial default.
+	// This is safe because it happens at the very beginning of the startup, before any logs are collected.
+	if initialCapacity != defaultAuditCapacity {
+		GlobalAuditCollector = NewAuditCollector(initialCapacity)
+	}
+}
 
 func NewAuditCollector(capacity int) *AuditCollector {
 	c := &AuditCollector{
@@ -333,7 +378,6 @@ func (c *AuditCollector) processContext(wrappedCtx *auditContext) {
 }
 
 // --- Collect and other functions remain unchanged ---
-// ... (The rest of the file is exactly the same as before)
 func (c *AuditCollector) Collect(qCtx *query_context.Context) {
 	duration := time.Since(qCtx.StartTime())
 
@@ -399,7 +443,8 @@ func (c *AuditCollector) GetCapacity() int {
 	return c.capacity
 }
 
-func (c *AuditCollector) SetCapacity(newCapacity int) {
+// <<< MODIFIED: SetCapacity now takes the config base directory as an argument
+func (c *AuditCollector) SetCapacity(newCapacity int, configBaseDir string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -409,6 +454,9 @@ func (c *AuditCollector) SetCapacity(newCapacity int) {
 	if newCapacity > maxAuditCapacity {
 		newCapacity = maxAuditCapacity
 	}
+
+	// Save the new capacity to file
+	c.saveSettings(newCapacity, configBaseDir)
 
 	c.capacity = newCapacity
 	c.logs = make([]AuditLog, 0, newCapacity)
@@ -420,6 +468,22 @@ func (c *AuditCollector) SetCapacity(newCapacity int) {
 	c.domainSetCounts = make(map[string]int)
 	c.totalQueryCount = 0
 	c.totalQueryDuration = 0.0
+}
+
+// <<< ADDED: saveSettings helper function
+func (c *AuditCollector) saveSettings(capacityToSave int, configBaseDir string) {
+	settings := AuditSettings{Capacity: capacityToSave}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		mlog.L().Error("failed to marshal audit settings", zap.Error(err))
+		return
+	}
+	settingsPath := filepath.Join(configBaseDir, auditSettingsFilename)
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		mlog.L().Error("failed to write audit settings file", zap.String("path", settingsPath), zap.Error(err))
+	} else {
+		mlog.L().Info("successfully saved audit settings", zap.String("path", settingsPath), zap.Int("capacity", capacityToSave))
+	}
 }
 
 type V2GetLogsParams struct {

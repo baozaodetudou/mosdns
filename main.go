@@ -35,6 +35,7 @@ var (
 )
 
 func init() {
+	coremain.SetBuildVersion(version)
 	coremain.AddSubCmd(&cobra.Command{
 		Use:   "version",
 		Short: "Print out version info and exit.",
