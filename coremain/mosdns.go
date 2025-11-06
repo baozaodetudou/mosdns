@@ -311,7 +311,7 @@ func (m *Mosdns) initHttpMux() {
 		http.Redirect(w, r, "/log", http.StatusFound)
 	}
 
-	staticAssetHandler := func(w http.ResponseWriter, r *http.Request) {
+    staticAssetHandler := func(w http.ResponseWriter, r *http.Request) {
 		relativePath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if !strings.HasPrefix(relativePath, "assets/") {
 			http.NotFound(w, r)
@@ -338,14 +338,14 @@ func (m *Mosdns) initHttpMux() {
 			w.Header().Set("Content-Type", "font/ttf")
 		}
 
-		if _, err := w.Write(data); err != nil {
-			m.logger.Error("Error writing static asset response", zap.Error(err))
-		}
-		return true
-	}
+        if _, err := w.Write(data); err != nil {
+            m.logger.Error("Error writing static asset response", zap.Error(err))
+        }
+    }
 
-	// [修改] 为每个路由注册对应的 handler
-	m.httpMux.Get("/", rootHandler)
+    // [修改] 为每个路由注册对应的 handler
+    // 根路径重定向到 /graphic
+    m.httpMux.Get("/", rootRedirectHandler)
 	m.httpMux.Get("/graphic", graphicHandler)
 	m.httpMux.Get("/log", logHandler)
 	m.httpMux.Get("/plog", plainLogHandler)
@@ -361,16 +361,13 @@ func (m *Mosdns) initHttpMux() {
 		r.Get("/trace", pprof.Trace)
 	})
 
-	// A helper page for invalid request.
-	invalidApiReqHelper := func(w http.ResponseWriter, req *http.Request) {
-		if serveStatic(w, req) {
-			return
-		}
-		b := new(bytes.Buffer)
-		_, _ = fmt.Fprintf(b, "Invalid request %s %s\n\n", req.Method, req.RequestURI)
-		b.WriteString("Available api urls:\n")
-		_ = chi.Walk(m.httpMux, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
-			b.WriteString(method)
+    // A helper page for invalid request.
+    invalidApiReqHelper := func(w http.ResponseWriter, req *http.Request) {
+        b := new(bytes.Buffer)
+        _, _ = fmt.Fprintf(b, "Invalid request %s %s\n\n", req.Method, req.RequestURI)
+        b.WriteString("Available api urls:\n")
+        _ = chi.Walk(m.httpMux, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+            b.WriteString(method)
 			b.WriteByte(' ')
 			b.WriteString(route)
 			b.WriteByte('\n')
