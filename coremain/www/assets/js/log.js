@@ -32,8 +32,8 @@ function closeAndUnlock(dialogElement) {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-	const CONSTANTS = { API_BASE_URL: '', LOGS_PER_PAGE: 50, HISTORY_LENGTH: 30, DEFAULT_AUTO_REFRESH_INTERVAL: 15, ANIMATION_DURATION: 1000, MOBILE_BREAKPOINT: 768, TOAST_DURATION: 3000, SKELETON_ROWS: 10, TOOLTIP_SHOW_DELAY: 200, TOOLTIP_HIDE_DELAY: 250, UPDATE_AUTO_MINUTES_DEFAULT: 60 };
-	let state = { isUpdating: false, isCapturing: false, isMobile: false, isTouchDevice: false, currentLogPage: 1, isLogLoading: false, logPaginationInfo: null, displayedLogs: [], currentLogSearchTerm: '', clientAliases: {}, topDomains: [], topClients: [], slowestQueries: [], domainSetRank: [], shuntColors: {}, logSort: { key: 'query_time', order: 'desc' }, autoRefresh: { enabled: false, intervalId: null, intervalSeconds: CONSTANTS.DEFAULT_AUTO_REFRESH_INTERVAL }, data: { totalQueries: { current: null, previous: null }, avgDuration: { current: null, previous: null } }, history: { totalQueries: [], avgDuration: [] }, lastUpdateTime: null, adguardRules: [], diversionRules: [], requery: { status: null, config: null, pollId: null }, dataView: { rawEntries: [], filteredEntries: [] }, coreMode: 'A', cacheStats: {}, listManagerInitialized: false, featureSwitches: {}, systemInfo: {}, update: { status: null, loading: false, auto: { enabled: true, intervalMinutes: 60, timerId: null } } };
+		const CONSTANTS = { API_BASE_URL: '', LOGS_PER_PAGE: 50, HISTORY_LENGTH: 30, DEFAULT_AUTO_REFRESH_INTERVAL: 15, ANIMATION_DURATION: 1000, MOBILE_BREAKPOINT: 768, TOAST_DURATION: 3000, SKELETON_ROWS: 10, TOOLTIP_SHOW_DELAY: 200, TOOLTIP_HIDE_DELAY: 250, UPDATE_AUTO_MINUTES_DEFAULT: 1440 };
+		let state = { isUpdating: false, isCapturing: false, isMobile: false, isTouchDevice: false, currentLogPage: 1, isLogLoading: false, logPaginationInfo: null, displayedLogs: [], currentLogSearchTerm: '', clientAliases: {}, topDomains: [], topClients: [], slowestQueries: [], domainSetRank: [], shuntColors: {}, logSort: { key: 'query_time', order: 'desc' }, autoRefresh: { enabled: false, intervalId: null, intervalSeconds: CONSTANTS.DEFAULT_AUTO_REFRESH_INTERVAL }, data: { totalQueries: { current: null, previous: null }, avgDuration: { current: null, previous: null } }, history: { totalQueries: [], avgDuration: [] }, lastUpdateTime: null, adguardRules: [], diversionRules: [], requery: { status: null, config: null, pollId: null }, dataView: { rawEntries: [], filteredEntries: [] }, coreMode: 'A', cacheStats: {}, listManagerInitialized: false, featureSwitches: {}, systemInfo: {}, update: { status: null, loading: false, auto: { enabled: true, intervalMinutes: CONSTANTS.UPDATE_AUTO_MINUTES_DEFAULT, timerId: null } } };
 	const elements = { 
         html: document.documentElement, body: document.body, container: document.querySelector('.container'), initialLoader: document.getElementById('initial-loader'), 
         colorSwatches: document.querySelectorAll('.color-swatch'), 
@@ -51,6 +51,12 @@ document.addEventListener('DOMContentLoaded', () => {
         cacheStatsTbody: document.getElementById('cache-stats-tbody'),
         topDomainsBody: document.getElementById('top-domains-body'), topClientsBody: document.getElementById('top-clients-body'), slowestQueriesBody: document.getElementById('slowest-queries-body'), 
         shuntResultsBody: document.getElementById('shunt-results-body'),
+        // 覆盖配置元素
+        overridesModule: document.getElementById('overrides-module'),
+        overrideSocks5Input: document.getElementById('override-socks5-log'),
+        overrideEcsInput: document.getElementById('override-ecs-log'),
+        overridesLoadBtn: document.getElementById('overrides-load-btn-log'),
+        overridesSaveBtn: document.getElementById('overrides-save-btn-log'),
         logTable: document.getElementById('log-table'), logTableHead: document.getElementById('log-table-head'), logTableBody: document.getElementById('log-table-body'),
         logQueryTab: document.getElementById('log-query-tab'), 
         logSearch: document.getElementById('log-search'), logQueryTableContainer: document.getElementById('log-query-table-container'), logLoader: document.getElementById('log-loader'), 
@@ -97,13 +103,17 @@ document.addEventListener('DOMContentLoaded', () => {
 	requeryRefreshStatsBtn: document.getElementById('requery-refresh-stats-btn'),
 	updateModule: document.getElementById('update-module'),
 	updateCurrentVersion: document.getElementById('update-current-version'),
-	updateLatestVersion: document.getElementById('update-latest-version'),
-	updateStatusText: document.getElementById('update-status-text'),
-	updateLastChecked: document.getElementById('update-last-checked'),
-	updateTargetInfo: document.getElementById('update-target-info'),
-		updateCheckBtn: document.getElementById('update-check-btn'),
-		updateApplyBtn: document.getElementById('update-apply-btn'),
-		updateForceBtn: document.getElementById('update-force-btn'),
+        updateLatestVersion: document.getElementById('update-latest-version'),
+        updateInlineBadge: document.getElementById('update-inline-badge'),
+        updateStatusBanner: document.getElementById('update-status-banner'),
+        updateStatusText: document.getElementById('update-status-text'),
+        updateLastChecked: document.getElementById('update-last-checked'),
+        updateTargetInfo: document.getElementById('update-target-info'),
+            updateCheckBtn: document.getElementById('update-check-btn'),
+            updateApplyBtn: document.getElementById('update-apply-btn'),
+            updateForceBtn: document.getElementById('update-force-btn'),
+        updateV3Callout: document.getElementById('update-v3-callout'),
+        updateV3Btn: document.getElementById('update-v3-btn'),
 	updateAutoToggle: document.getElementById('update-auto-toggle'),
 	updateIntervalInput: document.getElementById('update-interval-input'),
 	updateHintText: document.getElementById('update-hint-text'),
@@ -145,7 +155,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const debounce = (func, wait) => { let timeout; return function executedFunction(...args) { const later = () => { clearTimeout(timeout); func(...args); }; clearTimeout(timeout); timeout = setTimeout(later, wait); }; };
 
-    const api = { fetch: async (url, options = {}) => { try { const response = await fetch(url, { ...options, signal: options.signal }); if (!response.ok) { let errorMsg = `API Error: ${response.status} ${response.statusText}`; try { const errorBody = await response.json(); if (errorBody && errorBody.error) { errorMsg = errorBody.error; } } catch (e) { try { errorMsg = await response.text() || errorMsg; } catch (textErr) {} } if (response.status !== 404) { ui.showToast(errorMsg, 'error'); } throw new Error(errorMsg); } const contentType = response.headers.get('content-type'); if (contentType && contentType.includes('application/json')) return response.json(); return response.text(); } catch (error) { if (error.name !== 'AbortError') { console.error(error); } throw error; } }, getStatus: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/status`, { signal }), getCapacity: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/capacity`, { signal }), start: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/start`, { method: 'POST' }), stop: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/stop`, { method: 'POST' }), clear: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/clear`, { method: 'POST' }), setCapacity: (capacity) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/capacity`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capacity: parseInt(capacity, 10) }) }), getMetrics: (signal) => api.fetch('/metrics', { signal }), getCoreMode: (signal) => api.fetch('/plugins/switch3/show', { signal }), clearCache: (cacheTag) => api.fetch(`/plugins/${cacheTag}/flush`), getCacheContents: (cacheTag, signal) => api.fetch(`/plugins/${cacheTag}/show`, { signal }), v2: { getStats: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/stats`, { signal }), getTopDomains: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/domain?limit=${limit}`, { signal }), getTopClients: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/client?limit=${limit}`, { signal }), getSlowest: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/slowest?limit=${limit}`, { signal }), getDomainSetRank: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/domain_set?limit=${limit}`, { signal }), getLogs: (signal, params = {}) => { const queryParams = new URLSearchParams({ page: 1, limit: CONSTANTS.LOGS_PER_PAGE, ...params }); for(let [key, value] of queryParams.entries()){ if(!value) { queryParams.delete(key); } } return api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/logs?${queryParams}`, { signal }); } } };
+    // 轻量级请求器 + /metrics 简易缓存，减少同一时段的重复请求
+    let __metricsInflight = null; let __metricsStamp = 0;
+    const api = { fetch: async (url, options = {}) => { try { const response = await fetch(url, { ...options, signal: options.signal }); if (!response.ok) { let errorMsg = `API Error: ${response.status} ${response.statusText}`; try { const errorBody = await response.json(); if (errorBody && errorBody.error) { errorMsg = errorBody.error; } } catch (e) { try { errorMsg = await response.text() || errorMsg; } catch (textErr) {} } if (response.status !== 404) { ui.showToast(errorMsg, 'error'); } throw new Error(errorMsg); } const contentType = response.headers.get('content-type'); if (contentType && contentType.includes('application/json')) return response.json(); return response.text(); } catch (error) { if (error.name !== 'AbortError') { console.error(error); } throw error; } }, getStatus: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/status`, { signal }), getCapacity: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/capacity`, { signal }), start: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/start`, { method: 'POST' }), stop: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/stop`, { method: 'POST' }), clear: () => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/clear`, { method: 'POST' }), setCapacity: (capacity) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v1/audit/capacity`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capacity: parseInt(capacity, 10) }) }), getMetrics: (signal) => { const now = Date.now(); if (__metricsInflight && (now - __metricsStamp) < 3000) return __metricsInflight; __metricsInflight = api.fetch('/metrics', { signal }); __metricsStamp = now; return __metricsInflight; }, getCoreMode: (signal) => api.fetch('/plugins/switch3/show', { signal }), clearCache: (cacheTag) => api.fetch(`/plugins/${cacheTag}/flush`), getCacheContents: (cacheTag, signal) => api.fetch(`/plugins/${cacheTag}/show`, { signal }), v2: { getStats: (signal) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/stats`, { signal }), getTopDomains: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/domain?limit=${limit}`, { signal }), getTopClients: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/client?limit=${limit}`, { signal }), getSlowest: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/slowest?limit=${limit}`, { signal }), getDomainSetRank: (signal, limit = 50) => api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/rank/domain_set?limit=${limit}`, { signal }), getLogs: (signal, params = {}) => { const queryParams = new URLSearchParams({ page: 1, limit: CONSTANTS.LOGS_PER_PAGE, ...params }); for(let [key, value] of queryParams.entries()){ if(!value) { queryParams.delete(key); } } return api.fetch(`${CONSTANTS.API_BASE_URL}/api/v2/audit/logs?${queryParams}`, { signal }); } } };
     
 	const requeryApi = {
 		getConfig: (signal) => api.fetch(`/plugins/requery`, { signal }), 
@@ -157,11 +169,11 @@ document.addEventListener('DOMContentLoaded', () => {
 		getBackupCount: (signal) => api.fetch(`/plugins/requery/stats/backup_file_count`, { signal }),
 	};
 
-	const updateApi = {
-		getStatus: (signal) => api.fetch(`/api/v1/update/status`, { signal }),
-		forceCheck: () => api.fetch(`/api/v1/update/check`, { method: 'POST' }),
-		apply: (force = false) => api.fetch(`/api/v1/update/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force }) })
-	};
+    const updateApi = {
+        getStatus: (signal) => api.fetch(`/api/v1/update/status`, { signal }),
+        forceCheck: () => api.fetch(`/api/v1/update/check`, { method: 'POST' }),
+        apply: (force = false, preferV3 = false) => api.fetch(`/api/v1/update/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force, prefer_v3: preferV3 }) })
+    };
 
     const normalizeIP = (ip) => {
         if (typeof ip === 'string' && ip.startsWith('::ffff:')) {
@@ -215,16 +227,30 @@ document.addEventListener('DOMContentLoaded', () => {
             if (logs.length === 0 && !append) { renderTable(tbody, [], () => {}, 'log-query'); return; }
             const startIndex = state.displayedLogs.length;
             state.displayedLogs.push(...logs);
-            const fragment = document.createDocumentFragment();
-            logs.forEach((log, i) => { 
-                const row = renderLogItemHTML(log, startIndex + i);
-                requestAnimationFrame(() => {
-                    row.classList.add('animate-in');
-                    row.style.animationDelay = `${i * 20}ms`; 
-                });
-                fragment.appendChild(row); 
-            });
-            tbody.appendChild(fragment);
+
+            // 分批渲染，避免一次性插入大量行造成掉帧
+            const BATCH = 10;
+            let idx = 0;
+            const renderChunk = () => {
+                if (idx >= logs.length) return;
+                const frag = document.createDocumentFragment();
+                for (let c = 0; c < BATCH && idx < logs.length; c++, idx++) {
+                    const log = logs[idx];
+                    const row = renderLogItemHTML(log, startIndex + idx);
+                    // 仅对前20行做入场动画，减少布局/绘制开销
+                    if (startIndex + idx < 20) {
+                        row.classList.add('animate-in');
+                    }
+                    frag.appendChild(row);
+                }
+                tbody.appendChild(frag);
+                if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+                    requestIdleCallback(renderChunk, { timeout: 300 });
+                } else {
+                    setTimeout(renderChunk, 0);
+                }
+            };
+            renderChunk();
         },
         updateSearchResultsInfo(pagination) { if (!elements.searchResultsInfo) return; if (state.currentLogSearchTerm?.query && pagination) { elements.searchResultsInfo.innerHTML = `为您找到 <strong>${pagination.total_items.toLocaleString()}</strong> 条相关结果`; } else { elements.searchResultsInfo.innerHTML = ''; } },
         openLogDetailModal(triggerElement) {
@@ -726,8 +752,9 @@ document.addEventListener('DOMContentLoaded', () => {
 			elements.updateCheckBtn?.addEventListener('click', () => this.forceCheck());
 			elements.updateApplyBtn?.addEventListener('click', () => this.applyUpdate());
 			this.applyAutoSchedule(false);
-			this.refreshStatus();
+			// 延迟到用户进入“系统控制”页或后台定时器触发时再检查更新，避免首屏加载转圈变慢
 			elements.updateForceBtn?.addEventListener('click', () => this.applyUpdate(true, elements.updateForceBtn));
+			elements.updateV3Btn?.addEventListener('click', () => this.applyUpdate(true, elements.updateV3Btn, true));
 		},
 
 		loadAutoConfig() {
@@ -826,12 +853,15 @@ document.addEventListener('DOMContentLoaded', () => {
 			this.refreshButtons();
 		},
 
-		canApply() {
-			const status = state.update.status;
-			if (!status) return false;
-			if (status.pending_restart) return false;
-			return Boolean(status.update_available && status.download_url);
-		},
+        canApply() {
+            const status = state.update.status;
+            if (!status) return false;
+            if (status.pending_restart) return false;
+            const cur = status.current_version || '';
+            const lat = status.latest_version || '';
+            const sameVersion = this.normalizeVer(cur) !== '' && this.normalizeVer(cur) === this.normalizeVer(lat);
+            return Boolean(status.update_available && !sameVersion && status.download_url);
+        },
 
 		refreshButtons() {
 			if (elements.updateApplyBtn) {
@@ -843,13 +873,26 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		},
 
-		updateStatusUI(status) {
-			state.update.status = status;
-			if (!elements.updateModule || !status) return;
-			elements.updateCurrentVersion.textContent = status.current_version || '未知';
-			elements.updateLatestVersion.textContent = status.latest_version || '--';
-			elements.updateTargetInfo.textContent = status.asset_name ? `${status.asset_name} (${status.architecture || '未知'})` : (status.architecture || '未知');
-			elements.updateStatusText.textContent = status.message || (status.update_available ? '发现新版本，可立即更新。' : '已是最新版本');
+        // 前端冗余保护：即使后端误报，也以版本号等价判断为准
+        normalizeVer(v) {
+            if (!v) return '';
+            return String(v).trim().toLowerCase().replace(/^v/, '');
+        },
+
+        updateStatusUI(status) {
+            state.update.status = status;
+            if (!elements.updateModule || !status) return;
+            const cur = status.current_version || '';
+            const lat = status.latest_version || '';
+            const sameVersion = this.normalizeVer(cur) !== '' && this.normalizeVer(cur) === this.normalizeVer(lat);
+            elements.updateCurrentVersion.textContent = cur || '未知';
+            elements.updateLatestVersion.textContent = lat || '--';
+            elements.updateTargetInfo.textContent = status.asset_name ? `${status.asset_name} (${status.architecture || '未知'})` : (status.architecture || '未知');
+            // 重置内联徽标与横幅
+            if (elements.updateInlineBadge) { elements.updateInlineBadge.style.display = 'none'; elements.updateInlineBadge.className = 'badge'; }
+            if (elements.updateStatusBanner) elements.updateStatusBanner.style.display = '';
+            const effectiveUpdate = status.update_available && !sameVersion;
+            elements.updateStatusText.textContent = status.message || (effectiveUpdate ? '发现新版本，可立即更新。' : '当前已是最新版本');
 			const lastChecked = status.checked_at ? new Date(status.checked_at) : null;
 			elements.updateLastChecked.textContent = lastChecked ? lastChecked.toLocaleString() : '--';
             if (elements.updateApplyBtn) {
@@ -859,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 非 Windows：自重启中；Windows：等待手动重启
                     const isWindows = (status.architecture || '').startsWith('windows/');
                     label = isWindows ? '等待重启' : '重启中…';
-                } else if (!this.canApply()) label = '已是最新';
+                } else if (!this.canApply() || sameVersion) label = '已是最新';
                 if (span) span.textContent = label;
                 elements.updateApplyBtn.dataset.defaultText = label;
             }
@@ -877,13 +920,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 const msg = isWindows ? '更新已安装，等待手动重启生效。' : '更新已安装，正在自重启…';
                 elements.updateStatusText.textContent = msg;
                 this.setHint(msg);
+            } else if (!effectiveUpdate) {
+                // 已是最新：在“最新版本”行右侧显示小徽标，隐藏“立即更新”按钮与冗余横幅
+                if (elements.updateInlineBadge) {
+                    elements.updateInlineBadge.textContent = '已是最新';
+                    elements.updateInlineBadge.classList.add('success');
+                    elements.updateInlineBadge.style.display = 'inline-flex';
+                }
+                if (elements.updateApplyBtn) {
+                    elements.updateApplyBtn.style.display = 'none';
+                }
+                if (elements.updateStatusBanner) {
+                    elements.updateStatusBanner.style.display = 'none';
+                }
             } else if (status.message) {
                 // 截断过长信息，避免溢出
                 const trimmed = (status.message || '').toString();
                 elements.updateStatusText.textContent = trimmed.length > 120 ? trimmed.slice(0,117) + '…' : trimmed;
+                // 有更新：确保“立即更新”按钮可见
+                if (elements.updateApplyBtn) {
+                    elements.updateApplyBtn.style.display = '';
+                }
             }
-			this.refreshButtons();
-		},
+            this.refreshButtons();
+
+            // v3 提示：仅在 amd64、CPU 支持 v3 且当前不是 v3 构建时显示
+            const arch = (status.architecture || '');
+            const showV3 = (arch === 'linux/amd64' || arch === 'windows/amd64') && status.amd64_v3_capable && !status.current_is_v3;
+            if (elements.updateV3Callout) {
+                elements.updateV3Callout.style.display = showV3 ? 'grid' : 'none';
+            }
+        },
 
 		async refreshStatus(force = false) {
 			if (!elements.updateModule) return;
@@ -896,29 +963,29 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		},
 
-		async forceCheck() {
-			if (state.update.loading) return;
-			this.setUpdateLoading(true, elements.updateCheckBtn);
-			try {
-				const status = await updateApi.forceCheck();
-				ui.showToast('已刷新最新版本信息', 'success');
-				this.updateStatusUI(status);
-			} catch (error) {
-				console.error('强制检查更新失败:', error);
-				ui.showToast('强制检查失败', 'error');
-			} finally {
-				this.setUpdateLoading(false, elements.updateCheckBtn);
-				this.applyAutoSchedule(true);
-			}
-		},
+        async forceCheck() {
+            if (state.update.loading) return;
+            this.setUpdateLoading(true, elements.updateCheckBtn);
+            try {
+                const status = await updateApi.forceCheck();
+                ui.showToast('已刷新最新版本信息', 'success');
+                this.updateStatusUI(status);
+            } catch (error) {
+                console.error('强制检查更新失败:', error);
+                ui.showToast('强制检查失败', 'error');
+            } finally {
+                this.setUpdateLoading(false, elements.updateCheckBtn);
+                this.applyAutoSchedule(true);
+            }
+        },
 
-		async applyUpdate(force = false, button = elements.updateApplyBtn) {
+		async applyUpdate(force = false, button = elements.updateApplyBtn, preferV3 = false) {
 			if (state.update.loading) return;
 			if (!force && !this.canApply()) return;
 			this.setUpdateLoading(true, button || elements.updateApplyBtn);
 			try {
 				const prevVersion = state.update.status?.current_version || '';
-				const result = await updateApi.apply(force);
+				const result = await updateApi.apply(force, preferV3);
 				if (result.installed) {
 					ui.showToast(result.status?.message || '更新已安装，正在自重启…', 'success');
 				} else {
@@ -933,11 +1000,16 @@ document.addEventListener('DOMContentLoaded', () => {
 			} catch (error) {
 				console.error('执行更新失败:', error);
 				ui.showToast('更新失败，请检查日志', 'error');
-			} finally {
-				this.setUpdateLoading(false, button || elements.updateApplyBtn);
-				this.applyAutoSchedule(true);
-			}
-		}
+            } finally {
+                this.setUpdateLoading(false, button || elements.updateApplyBtn);
+                this.applyAutoSchedule(true);
+                // 若不存在可更新，确保隐藏“立即更新”按钮的显示残留
+                const st = state.update.status;
+                if (elements.updateApplyBtn && st && !st.update_available) {
+                    elements.updateApplyBtn.style.display = 'none';
+                }
+            }
+        }
 	};
 
 	const systemInfoManager = {
@@ -1335,7 +1407,20 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.setLoading(elements.globalRefreshBtn, true);
         const activeTab = document.querySelector('.tab-link.active')?.dataset.tab;
         try {
-            const [statusRes, capacityRes, statsRes, domainSetRankRes] = await Promise.allSettled([api.getStatus(signal), api.getCapacity(signal), api.v2.getStats(signal), api.v2.getDomainSetRank(signal, 100)]);
+            // 概览页首屏：尽量少拉数据，避免阻塞渲染
+            const shallowOnOverview = (activeTab === 'overview' && !forceAll);
+            const basePromises = [
+                api.getStatus(signal),
+                api.getCapacity(signal),
+                api.v2.getStats(signal)
+            ];
+            if (!shallowOnOverview) basePromises.push(api.v2.getDomainSetRank(signal, 100));
+
+            const results = await Promise.allSettled(basePromises);
+            const statusRes = results[0];
+            const capacityRes = results[1];
+            const statsRes = results[2];
+            const domainSetRankRes = results[3]; // 只有在非浅加载时才存在
 
             ui.updateStatus(statusRes.status === 'fulfilled' ? statusRes.value?.capturing : null);
             ui.updateCapacity(capacityRes.status === 'fulfilled' ? capacityRes.value?.capacity : null);
@@ -1350,21 +1435,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 historyManager.add(stats.total_queries, stats.average_duration_ms);
             }
 
-            if (domainSetRankRes.status === 'fulfilled') { 
+            if (domainSetRankRes && domainSetRankRes.status === 'fulfilled') { 
                 state.domainSetRank = domainSetRankRes.value || []; 
                 renderDonutChart(state.domainSetRank); 
             }
             
-		if (activeTab === 'system-control' || forceAll) {
-			await Promise.allSettled([
-				state.requery.pollId ? Promise.resolve() : requeryManager.updateStatus(signal),
-				updateDomainListStats(signal),
-				cacheManager.updateStats(signal),
-				switchManager.loadStatus(signal),
-				systemInfoManager.load(signal),
-				updateManager.refreshStatus(forceAll)
-			]);
-		}
+        // 系统控制：默认不在首屏/自动刷新时抓取重数据，改为“刷新按钮”触发或模块懒加载触发
+        if (activeTab === 'system-control' && forceAll) {
+            await Promise.allSettled([
+                state.requery.pollId ? Promise.resolve() : requeryManager.updateStatus(signal),
+                updateDomainListStats(signal),
+                cacheManager.updateStats(signal),
+                switchManager.loadStatus(signal),
+                systemInfoManager.load(signal),
+                updateManager.refreshStatus(false)
+            ]);
+        }
             
             if (forceAll) {
                 const [topDomainsRes, topClientsRes, slowestRes] = await Promise.allSettled([api.v2.getTopDomains(signal, 100), api.v2.getTopClients(signal, 100), api.v2.getSlowest(signal, 100)]);
@@ -1378,10 +1464,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (activeTab === 'log-query') await fetchAndRenderLogs(1, false);
             else if (activeTab === 'rules') {
                 const activeSubTab = document.querySelector('#rules-tab .sub-nav-link.active').dataset.subTab;
-                if(activeSubTab === 'list-mgmt' && !state.listManagerInitialized) {
+                if (activeSubTab === 'list-mgmt' && !state.listManagerInitialized) {
                     listManager.init();
-                } else {
-                    await Promise.all([adguardManager.load(), diversionManager.load()]);
+                } else if (activeSubTab === 'adguard' && state.adguardRules.length === 0) {
+                    await adguardManager.load();
+                } else if (activeSubTab === 'diversion' && state.diversionRules.length === 0) {
+                    await diversionManager.load();
                 }
             }
         } catch (error) { if (error.name !== 'AbortError') console.error("Page update failed:", error); } 
@@ -1396,7 +1484,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.isLogLoading && !append) return;
         state.isLogLoading = true;
         if (elements.logLoader) elements.logLoader.style.display = 'block';
-        if (!append) renderSkeletonRows(elements.logTableBody, CONSTANTS.LOGS_PER_PAGE, state.isMobile ? 1 : 5);
+        if (!append) renderSkeletonRows(elements.logTableBody, Math.min(20, CONSTANTS.LOGS_PER_PAGE), state.isMobile ? 1 : 5);
         if (!append && logRequestController) logRequestController.abort();
         logRequestController = new AbortController();
         const params = { page, limit: CONSTANTS.LOGS_PER_PAGE, q: state.currentLogSearchTerm.query, exact: state.currentLogSearchTerm.exact };
@@ -1630,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${formatRelativeTime(log.query_time)}</td>
                 <td>${renderDomainResponseCellHTML(log)}</td>
                 <td>${log.query_type}</td>
-                <td class="text-right">${log.duration_ms.toFixed(2)}</td>
+                <td class="text-center numeric duration-cell">${log.duration_ms.toFixed(2)}</td>
                 <td>${aliasManager.getAliasedClientHTML(log.client_ip)}</td>`;
         }
         return tr; 
@@ -1656,7 +1744,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.innerHTML = `
                 <td>${renderDomainResponseCellHTML(log, 'slowest')}</td>
                 <td>${aliasManager.getAliasedClientHTML(log.client_ip)}</td>
-                <td class="text-right">${log.duration_ms.toFixed(2)}</td>`;
+                <td class="text-right numeric duration-cell">${log.duration_ms.toFixed(2)}</td>`;
         }
         return tr; 
     }
@@ -1713,16 +1801,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.location.hash !== newHash) history.pushState(null, '', newHash);
         const activeTabId = targetLink.dataset.tab;
         elements.tabContents.forEach(el => el.classList.toggle('active', el.id === `${activeTabId}-tab`));
+        // 系统控制页采用懒加载；不在切换时主动拉取重数据，由模块可见时触发
         if (activeTabId === 'log-query' && state.displayedLogs.length === 0) {
             applyLogFilterAndRender();
         } else if (activeTabId === 'rules') {
             const activeSubTab = document.querySelector('#rules-tab .sub-nav-link.active').dataset.subTab;
             if (activeSubTab === 'list-mgmt' && !state.listManagerInitialized) {
                 listManager.init();
-            } else if ((activeSubTab === 'adguard' && state.adguardRules.length === 0) || (activeSubTab === 'diversion' && state.diversionRules.length === 0)) {
+            } else if (activeSubTab === 'adguard' && state.adguardRules.length === 0) {
                 renderSkeletonRows(elements.adguardRulesTbody, 5, state.isMobile ? 1 : 6);
+                adguardManager.load();
+            } else if (activeSubTab === 'diversion' && state.diversionRules.length === 0) {
                 renderSkeletonRows(elements.diversionRulesTbody, 5, state.isMobile ? 1 : 7);
-                Promise.all([adguardManager.load(), diversionManager.load()]);
+                diversionManager.load();
             }
         }
     }
@@ -1785,6 +1876,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const adguardManager = { async load() { try { state.adguardRules = await api.fetch('/plugins/adguard/rules') || []; } catch (error) { state.adguardRules = []; } this.render(); }, render() { renderRuleTable(elements.adguardRulesTbody, state.adguardRules, 'adguard'); }, };
     const diversionManager = { sdSetInstanceMap: { 'geositecn': 'geosite_cn', 'geositenocn': 'geosite_no_cn', 'geoipcn': 'geoip_cn' }, async load() { try { const promises = Object.values(this.sdSetInstanceMap).map(tag => api.fetch(`/plugins/${tag}/config`)); const results = await Promise.allSettled(promises); state.diversionRules = results.filter(r => r.status === 'fulfilled' && Array.isArray(r.value)).flatMap(r => r.value); } catch(e) { state.diversionRules = []; } this.render(); }, render() { renderRuleTable(elements.diversionRulesTbody, state.diversionRules, 'diversion'); }, };
     
+    // 流式计数工具：避免一次性创建超大字符串数组导致主线程卡顿
+    async function countLinesStreaming(url, signal) {
+        const res = await fetch(url, { signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const reader = res.body?.getReader();
+        if (!reader) { // 兼容性回退
+            const text = await res.text();
+            if (!text) return 0;
+            let n = 0; for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
+            if (text.length > 0 && text.charCodeAt(text.length - 1) !== 10) n++;
+            return n;
+        }
+        const decoder = new TextDecoder();
+        let { value, done } = await reader.read();
+        let leftover = '';
+        let count = 0;
+        while (!done) {
+            const chunkText = leftover + decoder.decode(value, { stream: true });
+            // 统计当前块中的换行符
+            for (let i = 0; i < chunkText.length; i++) if (chunkText.charCodeAt(i) === 10) count++;
+            // 处理最后一行未以 \n 结尾的情况：保留到下一块
+            const lastNl = chunkText.lastIndexOf('\n');
+            leftover = lastNl === -1 ? chunkText : chunkText.slice(lastNl + 1);
+            ({ value, done } = await reader.read());
+        }
+        // 最后一块
+        const finalText = leftover + decoder.decode();
+        if (finalText.length > 0) count++;
+        return count;
+    }
+
     async function updateDomainListStats(signal) {
         const listMap = {
             fakeip: { element: elements.fakeipDomainCount, endpoint: '/plugins/my_fakeiplist/show' },
@@ -1793,31 +1915,26 @@ document.addEventListener('DOMContentLoaded', () => {
             nov6: { element: elements.nov6DomainCount, endpoint: '/plugins/my_nov6list/show' },
         };
 
-        const promises = Object.values(listMap).map(item => api.fetch(item.endpoint, { signal }));
-        const backupPromise = requeryApi.getBackupCount(signal);
-        
-        const results = await Promise.allSettled(promises);
-
-        results.forEach((result, index) => {
-            const key = Object.keys(listMap)[index];
-            const { element } = listMap[key];
-            if (result.status === 'fulfilled' && typeof result.value === 'string') {
-                const count = result.value.trim() === '' ? 0 : result.value.trim().split('\n').length;
+        // 顺序 + 流式计数，进一步降低内存占用与主线程卡顿
+        for (const key of Object.keys(listMap)) {
+            const { element, endpoint } = listMap[key];
+            try {
+                const count = await countLinesStreaming(endpoint, signal);
                 element.textContent = count.toLocaleString();
-            } else {
-                element.textContent = '获取失败';
+            } catch (e) {
+                if (e.name !== 'AbortError') element.textContent = '获取失败';
             }
-        });
+        }
 
         try {
-            const backupRes = await backupPromise;
+            const backupRes = await requeryApi.getBackupCount(signal);
             if (backupRes && backupRes.status === 'success') {
                 elements.backupDomainCount.textContent = `${backupRes.count.toLocaleString()} 条`;
             } else {
                 elements.backupDomainCount.textContent = '获取失败';
             }
         } catch(e) {
-            elements.backupDomainCount.textContent = '获取失败';
+            if (e.name !== 'AbortError') elements.backupDomainCount.textContent = '获取失败';
         }
     }
 
@@ -1851,6 +1968,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 itemEl.append(headerEl, collapseEl);
                 accordionContainer.appendChild(itemEl);
 
+                // 标题整行可点击：但避免点击到按钮自身时触发两次
+                headerEl.addEventListener('click', (ev) => {
+                    if (ev.target === buttonEl || buttonEl.contains(ev.target)) return; // 直接点击按钮时，不在此重复触发
+                    ev.preventDefault();
+                    buttonEl.click();
+                });
+
                 buttonEl.addEventListener('click', () => {
                     const isCollapsed = buttonEl.classList.contains('collapsed');
                     if (isCollapsed && bodyEl.innerHTML === '') {
@@ -1878,14 +2002,12 @@ document.addEventListener('DOMContentLoaded', () => {
                          bodyEl.appendChild(pre);
                     }
 
+                    // 切换可见性
                     buttonEl.classList.toggle('collapsed');
                     collapseEl.classList.toggle('show');
                     
-                    if (collapseEl.classList.contains('show')) {
-                        collapseEl.style.maxHeight = bodyEl.scrollHeight + 'px';
-                    } else {
-                        collapseEl.style.maxHeight = null;
-                    }
+                    // 使用 max-height 实现动画，同时保证可收起
+                    collapseEl.style.maxHeight = collapseEl.classList.contains('show') ? (bodyEl.scrollHeight + 'px') : '0px';
                 });
             });
             elements.dataViewTableContainer.appendChild(accordionContainer);
@@ -2121,12 +2243,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             elements.listSaveBtn.addEventListener('click', () => this.saveList());
-            this.loadList('whitelist'); // Load first list by default
+            // 首屏不立即加载巨大列表，交给空闲时机/用户点击触发，避免刷新时卡顿
+            if ('requestIdleCallback' in window) requestIdleCallback(() => this.loadList('whitelist'), { timeout: 2000 });
+            else setTimeout(() => this.loadList('whitelist'), 1200);
             state.listManagerInitialized = true;
         },
         
         async loadList(tag) {
             this.currentTag = tag;
+            // Abort any previous in-flight request and reset textarea to avoid old content persisting
+            try { this._abortController?.abort(); } catch (_) {}
+            this._abortController = new AbortController();
+            // Clear previous content so switching lists reflects immediately
+            elements.listContentTextArea.value = '';
+            elements.listContentTextArea.scrollTop = 0;
             elements.listMgmtNav.querySelectorAll('.list-mgmt-link').forEach(l => l.classList.toggle('active', l.dataset.listTag === tag));
             
             elements.listMgmtClientIpHint.style.display = (tag === 'client_ip') ? 'block' : 'none';
@@ -2140,25 +2270,70 @@ document.addEventListener('DOMContentLoaded', () => {
             ui.setLoading(elements.listSaveBtn, true);
 
             try {
-                const text = await api.fetch(`/plugins/${tag}/show`);
-                const lines = text.trim() === '' ? [] : text.trim().split('\n');
-                
-                if (lines.length > this.MAX_LINES) {
-                    elements.listContentTextArea.value = lines.slice(0, this.MAX_LINES).join('\n');
-                    elements.listContentInfo.textContent = `内容过长，仅显示前 ${this.MAX_LINES} 行（共 ${lines.length} 行）。`;
+                // 流式读取，最多加载 MAX_LINES 行，避免一次性 split 大字符串拖慢主线程
+                const res = await fetch(`/plugins/${tag}/show`, { signal: this._abortController.signal });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const reader = res.body?.getReader();
+                let totalLines = 0, shownLines = 0;
+                let buffer = '';
+                const CHUNK_LIMIT = this.MAX_LINES; // 达到就停止
+                let cancelled = false;
+                if (reader) {
+                    const decoder = new TextDecoder();
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        let nl;
+                        while ((nl = buffer.indexOf('\n')) !== -1) {
+                            totalLines++;
+                            const line = buffer.slice(0, nl);
+                            buffer = buffer.slice(nl + 1);
+                            if (shownLines < CHUNK_LIMIT) {
+                                elements.listContentTextArea.value += (shownLines ? '\n' : '') + line;
+                                shownLines++;
+                            }
+                            if (shownLines >= CHUNK_LIMIT) {
+                                // 够了，取消后续读取
+                                cancelled = true;
+                                try { reader.cancel(); } catch (_) {}
+                                break;
+                            }
+                        }
+                        if (cancelled) break;
+                    }
+                    // 剩余缓冲
+                    if (!cancelled && buffer.length > 0) {
+                        totalLines++;
+                        if (shownLines < CHUNK_LIMIT) {
+                            elements.listContentTextArea.value += (shownLines ? '\n' : '') + buffer;
+                            shownLines++;
+                        }
+                    }
                 } else {
-                    elements.listContentTextArea.value = text.trim();
-                    elements.listContentInfo.textContent = `共 ${lines.length} 行。`;
+                    // 兼容不支持流式的环境
+                    const text = await res.text();
+                    const parts = text.split('\n');
+                    totalLines = parts.length;
+                    elements.listContentTextArea.value = parts.slice(0, CHUNK_LIMIT).join('\n');
+                    shownLines = Math.min(totalLines, CHUNK_LIMIT);
                 }
-
+                if (shownLines >= CHUNK_LIMIT) elements.listContentInfo.textContent = `内容较长，已仅加载前 ${CHUNK_LIMIT} 行。`;
+                else elements.listContentInfo.textContent = `共 ${shownLines} 行。`;
             } catch (error) {
-                elements.listContentTextArea.value = `加载列表“${tag}”失败。`;
-                elements.listContentInfo.textContent = '加载失败';
-                ui.showToast(`加载列表“${tag}”失败`, 'error');
+                if (error?.name === 'AbortError') {
+                    // 用户快速切换导致的中断，不提示错误
+                    elements.listContentInfo.textContent = '已取消';
+                } else {
+                    elements.listContentTextArea.value = `加载列表“${tag}”失败。`;
+                    elements.listContentInfo.textContent = '加载失败';
+                    ui.showToast(`加载列表“${tag}”失败`, 'error');
+                }
             } finally {
                 elements.listContentLoader.style.display = 'none';
                 elements.listContentTextArea.style.display = 'block';
                 ui.setLoading(elements.listSaveBtn, false);
+                this._abortController = null;
             }
         },
 
@@ -2182,6 +2357,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // 覆盖配置管理器（/api/v1/overrides）
+    const overridesManager = {
+        async load(silent = false) {
+            if (!elements.overrideSocks5Input || !elements.overrideEcsInput) return;
+            try {
+                const data = await api.fetch('/api/v1/overrides');
+                elements.overrideSocks5Input.value = (data && data.socks5) || '';
+                elements.overrideEcsInput.value = (data && data.ecs) || '';
+                if (!silent) ui.showToast('已读取当前覆盖配置');
+            } catch (e) {
+                ui.showToast('读取覆盖配置失败', 'error');
+            }
+        },
+        async save() {
+            if (!elements.overrideSocks5Input || !elements.overrideEcsInput) return;
+            const socks5 = elements.overrideSocks5Input.value.trim();
+            const ecs = elements.overrideEcsInput.value.trim();
+            const payload = {};
+            if (socks5) payload.socks5 = socks5;
+            if (ecs) payload.ecs = ecs;
+            if (Object.keys(payload).length === 0) { ui.showToast('没有可保存的覆盖项'); return; }
+            try {
+                await api.fetch('/api/v1/overrides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                ui.showToast('已保存，正在重启应用配置…', 'success');
+                // 调用系统重启接口，短延迟后自动刷新
+                try {
+                    await api.fetch('/api/v1/system/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delay_ms: 300 }) });
+                    // 给进程切换留出时间
+                    setTimeout(() => { location.reload(); }, 4000);
+                } catch (err) {
+                    ui.showToast('自动重启失败，请手动重启', 'error');
+                }
+            } catch (e) {
+                ui.showToast('保存覆盖配置失败', 'error');
+            }
+        }
+    };
+
 
     function setupEventListeners() {
         // -- [修改] -- 统一处理所有弹窗的关闭行为（遮罩层点击和ESC键）
@@ -2200,6 +2413,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         elements.tabLinks.forEach(link => link.addEventListener('click', (e) => { e.preventDefault(); handleNavigation(link); }));
+        // 覆盖配置：按钮事件
+        if (elements.overridesLoadBtn) elements.overridesLoadBtn.addEventListener('click', () => overridesManager.load(false));
+        if (elements.overridesSaveBtn) elements.overridesSaveBtn.addEventListener('click', () => overridesManager.save());
         window.addEventListener('popstate', () => { const hash = window.location.hash || '#overview'; const targetLink = document.querySelector(`.tab-link[href="${hash}"]`); handleNavigation(targetLink || elements.tabLinks[0]); });
         window.addEventListener('resize', debounce(handleResize, 150));
         elements.globalRefreshBtn?.addEventListener('click', () => updatePageData(true));
@@ -2504,10 +2720,74 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.lazy-load-card').forEach(card => lazyLoadObserver.observe(card));
     }
 
+    // 系统控制页模块懒加载：模块进入可视区时才请求
+    function setupSystemControlLazyLoading() {
+        const root = document.getElementById('system-control-tab');
+        if (!root) return;
+        const seen = new Set();
+        const map = new Map();
+
+        // 简易并发队列，避免系统控制页一次性触发过多请求
+        const SYS_MAX = 2; // 同时最多执行2个模块任务
+        const queue = [];
+        let running = 0;
+        const pump = () => {
+            while (running < SYS_MAX && queue.length > 0) {
+                const job = queue.shift();
+                running++;
+                Promise.resolve()
+                    .then(job)
+                    .catch(() => {})
+                    .finally(() => { running--; pump(); });
+            }
+        };
+        const enqueue = (fn) => { queue.push(fn); pump(); };
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !seen.has(entry.target)) {
+                    seen.add(entry.target);
+                    const fn = map.get(entry.target);
+                    if (typeof fn === 'function') enqueue(() => {
+                        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+                            return new Promise((resolve) => window.requestIdleCallback(() => { fn(); resolve(); }, { timeout: 1500 }));
+                        }
+                        return new Promise((resolve) => setTimeout(() => { fn(); resolve(); }, 300));
+                    });
+                }
+            });
+        }, { root, rootMargin: '50px' });
+
+        const watch = (selector, fn) => { const el = document.querySelector(selector); if (!el) return; map.set(el, fn); io.observe(el); };
+        watch('#system-info-module', () => systemInfoManager.load());
+        watch('#update-module', () => updateManager.refreshStatus(false));
+        watch('#feature-switches-module', () => switchManager.loadStatus());
+        watch('#domain-stats-module', () => updateDomainListStats());
+        watch('#requery-module', () => requeryManager.updateStatus());
+        watch('#overrides-module', () => overridesManager.load(true));
+        watch('#cache-stats-table', () => cacheManager.updateStats());
+    }
+
     async function init() {
         state.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         themeManager.init();
-        await aliasManager.load(); 
+        // 根据进入页签决定是否首屏加载别名（仅日志/概览需要）。避免 system-control 首屏的额外请求。
+        const firstHash = window.location.hash || '#overview';
+        const firstTab = (document.querySelector(`.tab-link[href="${firstHash}"]`)?.dataset.tab) || firstHash.replace('#','');
+        const loadAliasesAsync = () => aliasManager.load().then(() => {
+            // 别名加载后，如当前在 log-query，轻量重渲染以显示别名
+            const activeTab = document.querySelector('.tab-link.active')?.dataset.tab;
+            if (activeTab === 'log-query' && state.displayedLogs.length) {
+                ui.renderLogTable(state.displayedLogs, false);
+            }
+        });
+        if (firstTab === 'overview' || firstTab === 'log-query') {
+            // 不阻塞首屏：并行加载别名
+            loadAliasesAsync();
+        } else {
+            // 延后到空闲时加载，供后续切换使用
+            if ('requestIdleCallback' in window) requestIdleCallback(loadAliasesAsync);
+            else setTimeout(loadAliasesAsync, 1500);
+        }
         historyManager.load();
         autoRefreshManager.loadSettings();
         tableSorter.init();
@@ -2519,11 +2799,13 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         setupGlowEffect();
         setupLazyLoading();
+        setupSystemControlLazyLoading();
         handleResize();
-        const initialHash = window.location.hash || '#overview';
+        const initialHash = firstHash;
         const initialLink = document.querySelector(`.tab-link[href="${initialHash}"]`);
         if (initialLink) handleNavigation(initialLink);
-        await updatePageData(true);
+        // 首屏统一轻量刷新，所有重数据由懒加载或“刷新”按钮触发
+        await updatePageData(false);
         if (document.fonts?.ready) await document.fonts.ready;
         requestAnimationFrame(() => { const activeLink = document.querySelector('.tab-link.active'); if(activeLink) updateNavSlider(activeLink); });
         elements.initialLoader.style.opacity = '0';
