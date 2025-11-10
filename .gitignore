@@ -23,8 +23,8 @@ release/
 
 # test utils
 testutils/
-demo/
 /.playwright-mcp/
 /.spec-workflow/
 
 
+/demo/mosdns1/
